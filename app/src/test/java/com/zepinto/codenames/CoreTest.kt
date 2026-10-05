@@ -20,9 +20,6 @@ private fun fixedGame(start: Team = Team.RED): GameState {
     return g.copy(key = key)
 }
 
-/** The same game with an unlimited clue already given, so cards can be revealed. */
-private fun playing(g: GameState = fixedGame()): GameState = Engine.giveClue(g, "clue", 0)
-
 class EngineTest {
     @Test
     fun newGameHasTheRightMixOfCards() {
@@ -41,7 +38,7 @@ class EngineTest {
 
     @Test
     fun ownAgentKeepsTheTurnGoing() {
-        val g = Engine.reveal(playing(), 0)
+        val g = Engine.reveal(fixedGame(), 0)
         assertTrue(g.revealed[0])
         assertEquals(Team.RED, g.turn)
         assertEquals(8, g.remaining(Team.RED))
@@ -50,14 +47,13 @@ class EngineTest {
 
     @Test
     fun bystanderEndsTheTurn() {
-        val g = Engine.reveal(playing(), 20)
+        val g = Engine.reveal(fixedGame(), 20)
         assertEquals(Team.BLUE, g.turn)
-        assertNull(g.clue)
     }
 
     @Test
     fun theOtherTeamsAgentEndsTheTurnAndCountsForThem() {
-        val g = Engine.reveal(playing(), 10) // a blue card, red guessing
+        val g = Engine.reveal(fixedGame(), 10) // a blue card, red guessing
         assertEquals(Team.BLUE, g.turn)
         assertEquals(7, g.remaining(Team.BLUE))
         assertEquals(9, g.remaining(Team.RED))
@@ -65,17 +61,17 @@ class EngineTest {
 
     @Test
     fun theAssassinLosesTheGameForTheTeamThatPickedIt() {
-        val g = Engine.reveal(playing(), 24)
+        val g = Engine.reveal(fixedGame(), 24)
         assertEquals(Team.BLUE, g.winner)
         assertEquals(WinReason.ASSASSIN, g.winReason)
         // and the same when blue picks it
-        val blueTurn = playing(Engine.endTurn(fixedGame()))
+        val blueTurn = Engine.endTurn(fixedGame())
         assertEquals(Team.RED, Engine.reveal(blueTurn, 24).winner)
     }
 
     @Test
     fun uncoveringAllOfYourAgentsWins() {
-        var g = playing()
+        var g = fixedGame()
         for (i in 0 until 9) g = Engine.reveal(g, i)
         assertEquals(Team.RED, g.winner)
         assertEquals(WinReason.AGENTS, g.winReason)
@@ -83,87 +79,57 @@ class EngineTest {
 
     @Test
     fun theOtherTeamWinsIfYouUncoverTheirLastAgent() {
-        var g = playing(Engine.endTurn(fixedGame())) // blue to guess
+        var g = Engine.endTurn(fixedGame()) // blue to guess
         for (i in 9 until 16) g = Engine.reveal(g, i) // 7 blue agents, blue keeps guessing
         assertEquals(Team.BLUE, g.turn)
-        g = playing(Engine.endTurn(g)) // red to guess
+        g = Engine.endTurn(g) // red to guess
         g = Engine.reveal(g, 16)
         assertEquals(Team.BLUE, g.winner)
     }
 
     @Test
     fun nothingHappensTwiceOrAfterTheEnd() {
-        var g = Engine.reveal(playing(), 0)
+        var g = Engine.reveal(fixedGame(), 0)
         assertEquals(g, Engine.reveal(g, 0))
         assertEquals(g, Engine.reveal(g, 99))
         assertEquals(g, Engine.reveal(g, -1))
-        val over = Engine.reveal(playing(), 24)
+        val over = Engine.reveal(fixedGame(), 24)
         assertEquals(over, Engine.reveal(over, 1))
         assertEquals(over, Engine.endTurn(over))
-        assertEquals(over, Engine.giveClue(over, "x", 2))
     }
 
     @Test
-    fun aClueAllowsOneGuessMoreThanItsNumber() {
-        var g = Engine.giveClue(fixedGame(), "  sea  ", 2)
-        assertEquals(Clue("sea", 2), g.clue)
-        assertEquals(3, g.guessesLeft)
-        g = Engine.reveal(g, 0); assertEquals(2, g.guessesLeft); assertEquals(Team.RED, g.turn)
-        g = Engine.reveal(g, 1); assertEquals(1, g.guessesLeft); assertEquals(Team.RED, g.turn)
-        g = Engine.reveal(g, 2) // third and last guess, correct: the turn ends by itself
-        assertEquals(Team.BLUE, g.turn)
-        assertNull(g.clue)
-        assertNull(g.guessesLeft)
+    fun aGuessNeedsNoClueBecauseCluesAreSpokenAtTheTable() {
+        val g = Engine.reveal(fixedGame(), 0)
+        assertTrue(g.revealed[0])
+        assertEquals(Team.RED, g.turn)
     }
 
     @Test
-    fun zeroAndMissingNumbersMeanUnlimitedGuesses() {
-        for (n in listOf(0, null)) {
-            val g = Engine.giveClue(fixedGame(), "tree", n)
-            assertNull(g.clue!!.number)
-            assertNull(g.guessesLeft)
-            assertEquals(Team.RED, Engine.reveal(g, 0).turn)
+    fun theTurnGoesOnForAsLongAsTheTeamFindsItsOwnAgents() {
+        var g = fixedGame()
+        for (i in 0 until 8) {
+            g = Engine.reveal(g, i)
+            assertEquals("after agent ${i + 1}", Team.RED, g.turn)
         }
-    }
-
-    @Test
-    fun onlyOneClueEachTurnAndNeverAnEmptyOne() {
-        val g = Engine.giveClue(fixedGame(), "one", 1)
-        assertEquals(g, Engine.giveClue(g, "two", 3))
-        assertEquals(fixedGame(), Engine.giveClue(fixedGame(), "   ", 3))
-        val next = Engine.endTurn(g)
-        assertNull(next.clue)
-        assertEquals(Clue("two", 3), Engine.giveClue(next, "two", 3).clue)
-    }
-
-    @Test
-    fun noCardCanBeRevealedBeforeTheClue() {
-        val g = fixedGame()
-        assertEquals(g, Engine.reveal(g, 0))
-        assertEquals(g, Engine.reveal(g, 24))
-        // but the team may always pass
+        assertEquals(1, g.remaining(Team.RED))
+        // the team stops when it wants to
         assertEquals(Team.BLUE, Engine.endTurn(g).turn)
     }
 
     @Test
-    fun aClueCannotBeAWordStillOnTheBoard() {
+    fun passingTheTurnTwiceGivesTheTurnBack() {
         val g = fixedGame()
-        assertEquals(g, Engine.giveClue(g, "WORD3", 2))
-        assertEquals(g, Engine.giveClue(g, " word3 ", 2))
-        assertTrue(Engine.isOnBoard(g, "word3"))
-        // once that card is face up it is a fair clue
-        val after = Engine.reveal(Engine.giveClue(g, "other", 0), 2)
-        val next = Engine.endTurn(after)
-        assertFalse(Engine.isOnBoard(next, "word3"))
-        assertEquals(Clue("word3", 1), Engine.giveClue(next, "word3", 1).clue)
+        assertEquals(Team.BLUE, Engine.endTurn(g).turn)
+        assertEquals(Team.RED, Engine.endTurn(Engine.endTurn(g)).turn)
     }
 
     @Test
     fun everyChangeBumpsTheVersion() {
         var g = fixedGame()
         val seen = mutableListOf(g.seq)
-        g = Engine.giveClue(g, "a", 1); seen += g.seq
         g = Engine.reveal(g, 0); seen += g.seq
+        g = Engine.reveal(g, 20); seen += g.seq // a bystander: the turn passes
         g = Engine.endTurn(g); seen += g.seq
         assertEquals(seen.sorted().distinct(), seen)
     }
@@ -172,7 +138,7 @@ class EngineTest {
 class ProtocolTest {
     @Test
     fun theTableViewNeverContainsTheKeyOfAHiddenCard() {
-        val g = Engine.reveal(playing(), 0)
+        val g = Engine.reveal(fixedGame(), 0)
         val json = Protocol.state(g)
         assertFalse("no key array on the wire", json.contains("\"key\""))
         val view = (Protocol.parse(json) as Message.State).view
@@ -182,7 +148,7 @@ class ProtocolTest {
 
     @Test
     fun theWholeKeyIsSentOnceTheGameIsOver() {
-        val g = Engine.reveal(playing(), 24)
+        val g = Engine.reveal(fixedGame(), 24)
         val view = (Protocol.parse(Protocol.state(g)) as Message.State).view
         assertEquals(g.key, view.shown)
         assertEquals(Team.BLUE, view.winner)
@@ -190,31 +156,23 @@ class ProtocolTest {
 
     @Test
     fun theViewSurvivesAJsonRoundTrip() {
-        val withClue = Engine.reveal(Engine.giveClue(fixedGame(Team.BLUE), "ocean", 3), 2) // own agent, clue still active
-        val back = (Protocol.parse(Protocol.state(withClue)) as Message.State).view
-        assertEquals(BoardView.from(withClue), back)
-        assertEquals(Clue("ocean", 3), back.clue)
-        assertEquals(3, back.guessesLeft)
+        var g = Engine.reveal(fixedGame(Team.BLUE), 2) // own agent: the turn goes on
+        var back = (Protocol.parse(Protocol.state(g)) as Message.State).view
+        assertEquals(BoardView.from(g), back)
+        assertEquals(Team.BLUE, back.turn)
 
-        val turnPassed = Engine.reveal(withClue, 12) // blue picks a red agent: turn ends, clue is gone
-        val back2 = (Protocol.parse(Protocol.state(turnPassed)) as Message.State).view
-        assertEquals(BoardView.from(turnPassed), back2)
-        assertNull(back2.clue)
-        assertEquals(Team.RED, back2.turn)
-    }
-
-    @Test
-    fun anUnlimitedClueSurvivesTheRoundTrip() {
-        val g = Engine.giveClue(fixedGame(), "x", 0)
-        val back = (Protocol.parse(Protocol.state(g)) as Message.State).view
-        assertNull(back.clue!!.number)
-        assertNull(back.guessesLeft)
+        g = Engine.reveal(g, 12) // blue picks a red agent: the turn passes
+        back = (Protocol.parse(Protocol.state(g)) as Message.State).view
+        assertEquals(BoardView.from(g), back)
+        assertEquals(Team.RED, back.turn)
+        // key of fixedGame(BLUE): 9 blue agents first, then 8 red; one of each was uncovered
+        assertEquals(7, back.remainingRed)
+        assertEquals(8, back.remainingBlue)
     }
 
     @Test
     fun aSavedGameComesBackExactly() {
-        var g = Engine.giveClue(fixedGame(), "bridge", 2)
-        g = Engine.reveal(g, 3)
+        var g = Engine.reveal(fixedGame(), 3)
         assertEquals(g, Protocol.loadGame(Protocol.saveGame(g)))
         val over = Engine.reveal(g, 24)
         assertEquals(over, Protocol.loadGame(Protocol.saveGame(over)))
@@ -277,7 +235,7 @@ class SessionTest {
 
     @Test
     fun aGuessFromTheTableReachesTheHostAndComesBack() {
-        val p = Pair(playing())
+        val p = Pair(fixedGame())
         p.clientSends(Protocol.sync())
         assertEquals(0, p.deliver().last().view.revealedCount)
 
@@ -291,7 +249,7 @@ class SessionTest {
 
     @Test
     fun anIllegalGuessChangesNothingAndSendsNothing() {
-        val p = Pair(Engine.reveal(playing(), 0))
+        val p = Pair(Engine.reveal(fixedGame(), 0))
         p.clientSends(Protocol.guess(0))
         p.clientSends(Protocol.guess(77))
         p.clientSends("garbage")
@@ -300,7 +258,7 @@ class SessionTest {
     }
 
     @Test
-    fun theTableCanEndTheTurnButCannotSetClueOrKey() {
+    fun theTableCanEndTheTurnButCannotPlantStateOrChangeTheKey() {
         val p = Pair(fixedGame())
         p.clientSends(Protocol.endTurn())
         assertEquals(Team.BLUE, p.host.game.turn)
@@ -312,18 +270,9 @@ class SessionTest {
     }
 
     @Test
-    fun theSpymastersClueShowsOnTheTable() {
-        val p = Pair(fixedGame())
-        p.host.giveClue("river", 3)
-        p.deliver()
-        assertEquals(Clue("river", 3), p.client.view!!.clue)
-        assertEquals(4, p.client.view!!.guessesLeft)
-    }
-
-    @Test
     fun aStaleStateIsIgnored() {
         val p = Pair(fixedGame())
-        p.host.giveClue("a", 1)
+        p.host.endTurn()
         p.clientSends(Protocol.guess(0))
         val sent = p.toClient.toList()
         p.toClient.clear()
@@ -350,7 +299,7 @@ class SessionTest {
 
     @Test
     fun reconnectingGetsTheCurrentStateWithoutASound() {
-        val p = Pair(playing())
+        val p = Pair(fixedGame())
         p.clientSends(Protocol.guess(0))
         p.clientSends(Protocol.guess(1))
         val late = ClientSession() // a table phone that joins after play started
@@ -411,7 +360,6 @@ class StringsTest {
             assertTrue(t.pairText("4821").contains("4821"))
             assertTrue(t.revealWord("sea").contains("sea"))
             assertTrue(t.agentsLabel.isNotBlank())
-            assertTrue(t.guessesLeft(3).contains("3"))
             assertTrue(t.pairingCode("4821").contains("4821"))
         }
         assertEquals(Lang.PT, Lang.fromCode("pt"))

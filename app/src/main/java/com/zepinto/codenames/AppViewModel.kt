@@ -189,9 +189,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(game = g) }
     }
 
-    /** False when the clue was refused (empty, already given, or one of the words on the board). */
-    fun giveClue(word: String, number: Int?): Boolean = session?.giveClue(word, number) ?: false
-
     fun hostEndTurn() {
         session?.endTurn()
     }

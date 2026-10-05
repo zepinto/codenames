@@ -24,14 +24,6 @@ class HostSession(
         }
     }
 
-    /** False when the clue was refused (empty, already given this turn, or a word on the board). */
-    fun giveClue(word: String, number: Int?): Boolean {
-        val next = Engine.giveClue(game, word, number)
-        if (next == game) return false
-        apply(next)
-        return true
-    }
-
     /** The spymaster phone's own buttons act on the game like the table phone's do. */
     fun endTurn() = apply(Engine.endTurn(game))
 

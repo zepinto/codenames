@@ -8,7 +8,8 @@ The word-guessing party game **Codenames**, played with **two phones** instead o
   confirms, and the phone only then learns that card's colour.
 
 The phones talk to each other live, so a guess made on the table phone shows up on the spymaster phone
-at once, together with whose turn it is, how many agents are left and the clue the spymaster typed.
+at once, together with whose turn it is and how many agents are left. Clues are spoken at the table, as in the
+real game: the app only shows which team is playing and lets either phone **pass the turn**.
 
 Native Android app (Kotlin, Jetpack Compose). English, Portuguese and Spanish, each with its own
 list of about 400 words. Colour-blind friendly: red cards have stripes, blue cards have dots.
@@ -32,9 +33,9 @@ phone saves the game, so closing the app does not lose it (use **Resume game**).
 ## Rules implemented
 
 25 words; the team that starts has 9 agents, the other team 8, plus 7 bystanders and 1 assassin.
-A clue is one word and a number, typed on the spymaster phone (it cannot be a word still on the board); the table
-phone lets the team guess only once there is a clue. The team may make one guess more than the number (a 0 or
-infinity clue means unlimited guesses). Own agent: keep guessing. Bystander or the other team's agent: the turn ends.
+A clue is one word and a number, said out loud (the app does not take it and does not count guesses; the team keeps
+to the number plus one). Own agent: keep guessing. Bystander or the other team's agent: the turn ends. Either phone
+can pass the turn.
 Assassin: the team that picked it loses. First team to uncover all its agents wins.
 The rules are also inside the app (the **?** button).
 

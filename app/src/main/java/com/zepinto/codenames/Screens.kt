@@ -112,7 +112,6 @@ fun CodenamesApp(vm: AppViewModel = viewModel()) {
                 )
                 Screen.HOST -> HostScreen(
                     state = state,
-                    onClue = vm::giveClue,
                     onEndTurn = vm::hostEndTurn,
                     onNewGame = { confirmNewGame = true },
                     onAllowNearby = { hostPermission.launch(NearbyPermissions.required()) },
@@ -240,33 +239,6 @@ private fun TurnBanner(turn: Team, winner: Team?, reason: WinReason?) {
                 Text("🏆 " + t.teamWins(winner), fontWeight = FontWeight.Black, fontSize = 20.sp)
             }
         }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ClueLine(clue: Clue?, guessesLeft: Int?, active: Boolean) {
-    val t = LocalStrings.current
-    if (clue == null) {
-        if (active) Text(t.waitingForClue, color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
-        return
-    }
-    FlowRow(verticalArrangement = Arrangement.spacedBy(6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Surface(shape = Pill, color = Palette.Sun) {
-            Text(
-                "${clue.word.uppercase()} · ${clue.number?.toString() ?: "∞"}",
-                color = Palette.Ink,
-                fontWeight = FontWeight.Black,
-                fontSize = 17.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-            )
-        }
-        Text(
-            if (guessesLeft != null) t.guessesLeft(guessesLeft) else t.unlimitedGuesses,
-            color = Color.White.copy(alpha = 0.8f),
-            fontSize = 13.sp,
-            modifier = Modifier.align(Alignment.CenterVertically),
-        )
     }
 }
 
@@ -428,7 +400,6 @@ private fun LanguagePicker(selected: Lang, onSelect: (Lang) -> Unit) {
 @Composable
 private fun HostScreen(
     state: UiState,
-    onClue: (String, Int?) -> Boolean,
     onEndTurn: () -> Unit,
     onNewGame: () -> Unit,
     onAllowNearby: () -> Unit,
@@ -479,11 +450,6 @@ private fun HostScreen(
         }
 
         if (!g.over) {
-            if (g.clue == null) {
-                ClueInput(Palette.team(g.turn), onClue)
-            } else {
-                ClueLine(g.clue, g.guessesLeft, active = true)
-            }
             PillButton(t.endTurn, onEndTurn, Modifier.fillMaxWidth(), color = Color.White.copy(alpha = 0.16f), content = Color.White)
         }
 
@@ -532,59 +498,6 @@ private fun KeyCover(onShow: () -> Unit) {
             Text(t.keyHiddenHint, textAlign = TextAlign.Center, color = Color.White.copy(alpha = 0.7f))
             Spacer(Modifier.height(16.dp))
             PillButton(t.showKey, onShow)
-        }
-    }
-}
-
-@Composable
-private fun ClueInput(color: Color, onClue: (String, Int?) -> Boolean) {
-    val t = LocalStrings.current
-    var word by rememberSaveable { mutableStateOf("") }
-    var number by rememberSaveable { mutableIntStateOf(1) } // -1 is the infinity clue
-    var refused by remember { mutableStateOf(false) }
-    Surface(shape = Soft, color = color.copy(alpha = 0.18f), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(t.clueTitle, fontWeight = FontWeight.Bold)
-            OutlinedTextField(
-                value = word,
-                onValueChange = { word = it.replace(" ", "").take(24); refused = false },
-                isError = refused,
-                placeholder = { Text(t.cluePlaceholder) },
-                singleLine = true,
-                shape = Pill,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            if (refused) Text(t.clueOnBoard, color = Palette.Sun, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                (0..9).forEach { n -> NumberChip(n.toString(), number == n) { number = n } }
-                NumberChip("∞", number == -1) { number = -1 }
-            }
-            PillButton(
-                t.giveClue,
-                {
-                    if (onClue(word, if (number < 0) null else number)) word = "" else refused = true
-                },
-                Modifier.fillMaxWidth(),
-                enabled = word.isNotBlank(),
-                color = color,
-                content = Color.White,
-            )
-        }
-    }
-}
-
-@Composable
-private fun NumberChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(
-        shape = CircleShape,
-        color = if (selected) Palette.Sun else Color.White.copy(alpha = 0.12f),
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(label, fontWeight = FontWeight.Black, fontSize = 17.sp, color = if (selected) Palette.Ink else Color.White)
         }
     }
 }
@@ -774,7 +687,6 @@ private fun TableScreen(
             TeamTile(Team.RED, v.remainingRed, Modifier.weight(1f))
             TeamTile(Team.BLUE, v.remainingBlue, Modifier.weight(1f))
         }
-        ClueLine(v.clue, v.guessesLeft, active = !v.over)
 
         Grid { i, mod ->
             val type = v.shown[i]
@@ -807,7 +719,7 @@ private fun TableScreen(
                 if (pick != null) t.revealWord(v.words[pick].uppercase()) else t.tapAWord,
                 { pick?.let { onGuess(it) }; selected = -1 },
                 Modifier.fillMaxWidth(),
-                enabled = pick != null && v.clue != null && state.status == ClientStatus.CONNECTED,
+                enabled = pick != null && state.status == ClientStatus.CONNECTED,
                 color = Palette.team(v.turn),
                 content = Color.White,
             )

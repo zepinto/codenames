@@ -18,8 +18,6 @@ data class BoardView(
     val turn: Team,
     val remainingRed: Int,
     val remainingBlue: Int,
-    val clue: Clue?,
-    val guessesLeft: Int?,
     val winner: Team?,
     val winReason: WinReason?,
     val seq: Int,
@@ -40,8 +38,6 @@ data class BoardView(
             turn = g.turn,
             remainingRed = g.remaining(Team.RED),
             remainingBlue = g.remaining(Team.BLUE),
-            clue = g.clue,
-            guessesLeft = g.guessesLeft,
             winner = g.winner,
             winReason = g.winReason,
             seq = g.seq,
@@ -127,8 +123,6 @@ object Protocol {
         .put("start", v.startTeam.ordinal)
         .put("turn", v.turn.ordinal)
         .put("left", JSONArray(listOf(v.remainingRed, v.remainingBlue)))
-        .put("clue", v.clue?.let { JSONObject().put("w", it.word).put("n", it.number ?: JSONObject.NULL) } ?: JSONObject.NULL)
-        .put("guesses", v.guessesLeft ?: JSONObject.NULL)
         .put("winner", v.winner?.ordinal ?: -1)
         .put("why", v.winReason?.ordinal ?: -1)
         .put("seq", v.seq)
@@ -140,7 +134,6 @@ object Protocol {
         val shown = o.getJSONArray("shown").let { a -> List(a.length()) { a.getInt(it).let { n -> if (n < 0) null else CardType.values()[n] } } }
         require(words.size == Engine.SIZE && rev.size == Engine.SIZE && shown.size == Engine.SIZE) { "bad board size" }
         val left = o.getJSONArray("left")
-        val clue = o.optJSONObject("clue")?.let { Clue(it.getString("w"), if (it.isNull("n")) null else it.getInt("n")) }
         val winner = o.getInt("winner").takeIf { it >= 0 }?.let { Team.values()[it] }
         val why = o.getInt("why").takeIf { it >= 0 }?.let { WinReason.values()[it] }
         val last = o.optJSONObject("last")?.let { LastReveal(it.getInt("i"), CardType.values()[it.getInt("c")], Team.values()[it.getInt("by")]) }
@@ -154,8 +147,6 @@ object Protocol {
             turn = Team.values()[o.getInt("turn")],
             remainingRed = left.getInt(0),
             remainingBlue = left.getInt(1),
-            clue = clue,
-            guessesLeft = if (o.isNull("guesses")) null else o.getInt("guesses"),
             winner = winner,
             winReason = why,
             seq = o.getInt("seq"),
@@ -173,8 +164,6 @@ object Protocol {
         .put("rev", JSONArray(g.revealed))
         .put("start", g.startTeam.ordinal)
         .put("turn", g.turn.ordinal)
-        .put("clue", g.clue?.let { JSONObject().put("w", it.word).put("n", it.number ?: JSONObject.NULL) } ?: JSONObject.NULL)
-        .put("guesses", g.guessesLeft ?: JSONObject.NULL)
         .put("winner", g.winner?.ordinal ?: -1)
         .put("why", g.winReason?.ordinal ?: -1)
         .put("seq", g.seq)
@@ -195,8 +184,6 @@ object Protocol {
             revealed = rev,
             startTeam = Team.values()[o.getInt("start")],
             turn = Team.values()[o.getInt("turn")],
-            clue = o.optJSONObject("clue")?.let { Clue(it.getString("w"), if (it.isNull("n")) null else it.getInt("n")) },
-            guessesLeft = if (o.isNull("guesses")) null else o.getInt("guesses"),
             winner = o.getInt("winner").takeIf { it >= 0 }?.let { Team.values()[it] },
             winReason = o.getInt("why").takeIf { it >= 0 }?.let { WinReason.values()[it] },
             seq = o.getInt("seq"),
