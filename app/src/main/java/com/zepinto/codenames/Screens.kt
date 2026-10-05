@@ -81,8 +81,10 @@ fun CodenamesApp(vm: AppViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
     val t = state.lang.strings
     var showRules by rememberSaveable { mutableStateOf(false) }
+    var rulesDuet by rememberSaveable { mutableStateOf(false) }
     var confirmLeave by remember { mutableStateOf(false) }
     var confirmNewGame by remember { mutableStateOf(false) }
+    var confirmDuetNew by remember { mutableStateOf(false) }
 
     val hostPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
         if (r.values.all { it }) vm.startNearbyHost() else vm.nearbyDenied()
@@ -92,30 +94,36 @@ fun CodenamesApp(vm: AppViewModel = viewModel()) {
     }
 
     BackHandler(enabled = state.screen != Screen.HOME) {
-        if (state.screen == Screen.JOIN) vm.leaveTable() else confirmLeave = true
+        when (state.screen) {
+            Screen.JOIN -> vm.leaveTable()
+            Screen.DUET_HOME -> vm.leaveDuetHome()
+            else -> confirmLeave = true
+        }
     }
     // declared last so it wins: Back closes the rules page first
     BackHandler(enabled = showRules) { showRules = false }
 
     CompositionLocalProvider(LocalStrings provides t) {
         if (showRules) {
-            RulesScreen(onBack = { showRules = false })
+            RulesScreen(initialDuet = rulesDuet, onBack = { showRules = false })
         } else {
             when (state.screen) {
                 Screen.HOME -> HomeScreen(
                     state = state,
                     onSpymaster = vm::createGame,
-                    onTable = vm::openJoin,
+                    onTable = { vm.openJoin() },
                     onResume = vm::resumeGame,
+                    onDuet = vm::openDuetHome,
+                    onResumeDuet = vm::resumeDuet,
                     onLanguage = vm::setLanguage,
-                    onRules = { showRules = true },
+                    onRules = { rulesDuet = false; showRules = true },
                 )
                 Screen.HOST -> HostScreen(
                     state = state,
                     onEndTurn = vm::hostEndTurn,
                     onNewGame = { confirmNewGame = true },
                     onAllowNearby = { hostPermission.launch(NearbyPermissions.required()) },
-                    onRules = { showRules = true },
+                    onRules = { rulesDuet = false; showRules = true },
                 )
                 Screen.JOIN -> JoinScreen(
                     state = state,
@@ -124,11 +132,27 @@ fun CodenamesApp(vm: AppViewModel = viewModel()) {
                     onNearby = vm::connectNearby,
                     onWifi = vm::connectWifi,
                 )
+                Screen.DUET_HOME -> DuetHomeScreen(
+                    state = state,
+                    onBack = vm::leaveDuetHome,
+                    onCreate = vm::createDuet,
+                    onJoin = { vm.openJoin(fromDuet = true) },
+                    onResume = vm::resumeDuet,
+                    onRules = { rulesDuet = true; showRules = true },
+                )
+                Screen.DUET -> DuetScreen(
+                    state = state,
+                    onGuess = vm::duetGuess,
+                    onPass = vm::duetPass,
+                    onNewGame = { confirmDuetNew = true },
+                    onAllowNearby = { hostPermission.launch(NearbyPermissions.required()) },
+                    onRules = { rulesDuet = true; showRules = true },
+                )
                 Screen.TABLE -> TableScreen(
                     state = state,
                     onGuess = vm::guess,
                     onEndTurn = vm::tableEndTurn,
-                    onRules = { showRules = true },
+                    onRules = { rulesDuet = false; showRules = true },
                 )
             }
         }
@@ -150,10 +174,19 @@ fun CodenamesApp(vm: AppViewModel = viewModel()) {
                 confirmButton = {
                     TextButton(onClick = {
                         confirmLeave = false
-                        if (state.screen == Screen.HOST) vm.leaveHost() else vm.leaveTable()
+                        if (state.screen == Screen.HOST || (state.screen == Screen.DUET && state.duetHost)) vm.leaveHost() else vm.leaveTable()
                     }) { Text(t.leave) }
                 },
                 dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text(t.stay) } },
+            )
+        }
+        if (confirmDuetNew) {
+            AlertDialog(
+                onDismissRequest = { confirmDuetNew = false },
+                title = { Text(t.newGameTitle) },
+                text = { Text(t.newGameText) },
+                confirmButton = { TextButton(onClick = { confirmDuetNew = false; vm.duetNewGame() }) { Text(t.newGame) } },
+                dismissButton = { TextButton(onClick = { confirmDuetNew = false }) { Text(t.cancel) } },
             )
         }
         if (confirmNewGame) {
@@ -191,7 +224,7 @@ private fun Logo(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun HelpButton(onClick: () -> Unit) {
+internal fun HelpButton(onClick: () -> Unit) {
     val t = LocalStrings.current
     Surface(
         shape = CircleShape,
@@ -244,7 +277,7 @@ private fun TurnBanner(turn: Team, winner: Team?, reason: WinReason?) {
 
 /** One card of the 5 x 5 grid. */
 @Composable
-private fun WordCell(
+internal fun WordCell(
     word: String,
     modifier: Modifier = Modifier,
     fill: Color,
@@ -253,6 +286,8 @@ private fun WordCell(
     dim: Float = 1f,
     selected: Boolean = false,
     skull: Boolean = false,
+    badge: String? = null,
+    ring: Color? = null,
     onClick: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(10.dp)
@@ -264,7 +299,7 @@ private fun WordCell(
             .alpha(dim)
             .background(fill)
             .typePattern(pattern)
-            .then(if (selected) Modifier.border(3.dp, Palette.Aqua, shape) else Modifier),
+            .then(if (ring != null) Modifier.border(4.dp, ring, shape) else if (selected) Modifier.border(3.dp, Palette.Aqua, shape) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         // Fit the word to the width of the cell, and undo the user's font scale so a large setting cannot make it overflow.
@@ -284,11 +319,22 @@ private fun WordCell(
                 modifier = Modifier.padding(horizontal = 2.dp),
             )
         }
+        if (badge != null) {
+            Text(
+                badge,
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 2.dp, end = 4.dp),
+            )
+        }
     }
 }
 
 @Composable
-private fun Grid(cell: @Composable (Int, Modifier) -> Unit) {
+internal fun Grid(cell: @Composable (Int, Modifier) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         for (row in 0 until 5) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -306,6 +352,8 @@ private fun HomeScreen(
     onSpymaster: () -> Unit,
     onTable: () -> Unit,
     onResume: () -> Unit,
+    onDuet: () -> Unit,
+    onResumeDuet: () -> Unit,
     onLanguage: (Lang) -> Unit,
     onRules: () -> Unit,
 ) {
@@ -330,7 +378,9 @@ private fun HomeScreen(
         }
         Spacer(Modifier.height(16.dp))
         LanguagePicker(state.lang, onLanguage)
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
+        Text(t.classicLabel, fontWeight = FontWeight.Black, fontSize = 15.sp, color = Palette.Lilac)
+        Spacer(Modifier.height(8.dp))
         RoleCard("🕵️", t.spymasterTitle, t.spymasterDesc, Palette.Red, onSpymaster)
         Spacer(Modifier.height(14.dp))
         RoleCard("🎯", t.tableTitle, t.tableDesc, Palette.Blue, onTable)
@@ -338,13 +388,21 @@ private fun HomeScreen(
             Spacer(Modifier.height(14.dp))
             PillButton(t.resumeGame, onResume, Modifier.fillMaxWidth(), color = Palette.Aqua)
         }
+        Spacer(Modifier.height(22.dp))
+        Text(t.duetLabel, fontWeight = FontWeight.Black, fontSize = 15.sp, color = Palette.Lilac)
+        Spacer(Modifier.height(8.dp))
+        RoleCard("🤝", t.duetTitle, t.duetDesc, Palette.Agent, onDuet)
+        if (state.hasSavedDuet) {
+            Spacer(Modifier.height(14.dp))
+            PillButton(t.resumeGame, onResumeDuet, Modifier.fillMaxWidth(), color = Palette.Aqua)
+        }
         Spacer(Modifier.height(24.dp))
         Text(t.twoPhonesHint, color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
     }
 }
 
 @Composable
-private fun RoleCard(emoji: String, title: String, desc: String, color: Color, onClick: () -> Unit) {
+internal fun RoleCard(emoji: String, title: String, desc: String, color: Color, onClick: () -> Unit) {
     Surface(
         shape = Soft,
         color = color.copy(alpha = 0.25f),
@@ -367,7 +425,7 @@ private fun RoleCard(emoji: String, title: String, desc: String, color: Color, o
 }
 
 @Composable
-private fun LanguagePicker(selected: Lang, onSelect: (Lang) -> Unit) {
+internal fun LanguagePicker(selected: Lang, onSelect: (Lang) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         Lang.entries.forEach { lang ->
             val on = lang == selected
@@ -504,12 +562,12 @@ private fun KeyCover(onShow: () -> Unit) {
 
 /** How to connect the table phone: shown until it is connected. */
 @Composable
-private fun ConnectPanel(state: UiState, onAllowNearby: () -> Unit) {
+internal fun ConnectPanel(state: UiState, onAllowNearby: () -> Unit, duet: Boolean = false) {
     val t = LocalStrings.current
     Surface(shape = Soft, color = Color.White.copy(alpha = 0.08f), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(t.connectTitle, fontWeight = FontWeight.Black, fontSize = 17.sp)
-            Text(t.connectHelpNearby, fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f))
+            Text(if (duet) t.duetConnectTitle else t.connectTitle, fontWeight = FontWeight.Black, fontSize = 17.sp)
+            Text(if (duet) t.duetConnectHelp else t.connectHelpNearby, fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f))
             if (!state.nearbyActive) {
                 if (state.nearbyProblem) Text(t.nearbyUnavailable, fontSize = 13.sp, color = Palette.Sun)
                 Text(t.allowNearby, fontSize = 13.sp, color = Color.White.copy(alpha = 0.7f))
@@ -733,8 +791,10 @@ private fun TableScreen(
 // ---------------------------------------------------------------- rules
 
 @Composable
-private fun RulesScreen(onBack: () -> Unit) {
+private fun RulesScreen(initialDuet: Boolean, onBack: () -> Unit) {
     val t = LocalStrings.current
+    var duetTab by rememberSaveable(initialDuet) { mutableStateOf(initialDuet) }
+    val sections = if (duetTab) t.duetRulesSections else t.rulesSections
     Column(
         Modifier
             .fillMaxSize()
@@ -747,6 +807,12 @@ private fun RulesScreen(onBack: () -> Unit) {
             Text("← ${t.back}", color = Palette.Aqua, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
         Text("📖 ${t.rulesTitle}", fontSize = 32.sp, fontWeight = FontWeight.Black)
+        Spacer(Modifier.height(10.dp))
+        // both versions of the game, one tap apart
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            RulesTab("🕵️ ${t.classicTitle}", !duetTab, Modifier.weight(1f)) { duetTab = false }
+            RulesTab("🤝 ${t.duetTitle}", duetTab, Modifier.weight(1f)) { duetTab = true }
+        }
         Spacer(Modifier.height(12.dp))
         Column(
             Modifier
@@ -754,7 +820,8 @@ private fun RulesScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            t.rulesSections.forEach { section ->
+            Text(if (duetTab) t.duetLabel else t.classicLabel, color = Palette.Lilac, fontWeight = FontWeight.Bold)
+            sections.forEach { section ->
                 Surface(shape = Soft, color = Color.White.copy(alpha = 0.08f), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("${section.emoji}  ${section.title}", fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = Palette.Sun)
@@ -769,5 +836,25 @@ private fun RulesScreen(onBack: () -> Unit) {
             }
             Spacer(Modifier.height(8.dp))
         }
+    }
+}
+
+@Composable
+private fun RulesTab(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(
+        shape = Pill,
+        color = if (selected) Palette.Aqua.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.08f),
+        modifier = modifier
+            .border(2.dp, if (selected) Palette.Aqua else Color.Transparent, Pill)
+            .clip(Pill)
+            .clickable(onClick = onClick),
+    ) {
+        Text(
+            label,
+            fontWeight = if (selected) FontWeight.Black else FontWeight.Normal,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 11.dp),
+        )
     }
 }

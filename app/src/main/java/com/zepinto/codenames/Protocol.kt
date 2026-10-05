@@ -80,6 +80,11 @@ sealed interface Message {
     data object Sync : Message
     data object Ping : Message
     data class State(val view: BoardView) : Message
+
+    /** Duet: the second player's guess, their pass, and the host's update for them. */
+    data class DuetGuess(val index: Int, val gameId: Long, val seq: Int) : Message
+    data class DuetPass(val gameId: Long, val seq: Int) : Message
+    data class DuetUpdate(val view: DuetView) : Message
 }
 
 object Protocol {
@@ -92,6 +97,9 @@ object Protocol {
     fun endTurn() = JSONObject().put("t", "end").toString()
     fun sync() = JSONObject().put("t", "sync").toString()
     fun ping() = JSONObject().put("t", "ping").toString()
+    /** [gameId] and [seq] say which position of which game the player was looking at when they tapped. */
+    fun duetGuess(index: Int, gameId: Long, seq: Int) = JSONObject().put("t", "dguess").put("i", index).put("g", gameId).put("q", seq).toString()
+    fun duetPass(gameId: Long, seq: Int) = JSONObject().put("t", "dpass").put("g", gameId).put("q", seq).toString()
 
     /** The public state, as sent to the table phone. */
     fun state(g: GameState): String = JSONObject().put("t", "state").put("s", viewJson(BoardView.from(g))).toString()
@@ -108,6 +116,9 @@ object Protocol {
             "sync" -> Message.Sync
             "ping" -> Message.Ping
             "state" -> Message.State(parseView(o.getJSONObject("s")))
+            "dstate" -> Message.DuetUpdate(DuetCodec.parseView(o.getJSONObject("s")))
+            "dguess" -> Message.DuetGuess(o.getInt("i"), o.getLong("g"), o.getInt("q"))
+            "dpass" -> Message.DuetPass(o.getLong("g"), o.getInt("q"))
             else -> null
         }
     } catch (_: Exception) {

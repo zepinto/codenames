@@ -1,5 +1,8 @@
 # Codenames (two phones)
 
+Two ways to play, both with phones instead of cards: **Classic** (4 or more players: a spymaster phone and a table
+phone) and **Duet** (2 players, cooperative: one phone each).
+
 The word-guessing party game **Codenames**, played with **two phones** instead of cards:
 
 - the **spymaster phone** creates the game and shows the secret key (which of the 25 words are red, blue,
@@ -14,6 +17,17 @@ real game: the app only shows which team is playing and lets either phone **pass
 Native Android app (Kotlin, Jetpack Compose). English, Portuguese and Spanish, each with its own
 list of about 400 words. Colour-blind friendly: red cards have stripes, blue cards have dots.
 
+## Duet (2 players, one team)
+
+The cooperative Codenames Duet for two. **Each player uses their own phone, which is both the board and that player's
+own key**: 9 agents, 3 assassins and 13 bystanders, laid out as in the real game (3 agents are green on both keys).
+You take turns: the clue-giver says one word and a number out loud, the partner taps words, and the clue-giver's key
+says what each word is. Find all 15 agents within 9 turns (10 or 11 for an easier game) without picking an assassin.
+A bystander ends the turn and marks the word; when the turns run out it is **sudden death**: no clues, any wrong guess
+loses. The phone that creates the game holds both keys and is the authority; the other phone only ever receives its own
+key (the partner's is added once the game is over). Guesses carry the game and position they were made on, so a late
+message cannot hit a new game. Join through the same Nearby or Wi-Fi link as in the classic game.
+
 ## How the phones connect
 
 | Mode | Needs | Notes |
@@ -27,8 +41,9 @@ If the connection drops, the table phone reconnects by itself and gets the curre
 phone saves the game, so closing the app does not lose it (use **Resume game**).
 
 > **Status:** the game rules, the protocol, the Wi-Fi link and all screens are covered by unit tests and were
-> tested end to end on two emulators. The **Nearby** link follows Google's Nearby Connections documentation
-> but could only be tested for "does not crash" without Bluetooth hardware, so please try it on two real phones.
+> tested end to end on two emulators. The **Nearby** link has also been confirmed on two real phones: the table
+> phone found the spymaster phone without typing any address and the game played normally. It has not been
+> tried on every Android version yet.
 
 ## Rules implemented
 
@@ -37,7 +52,7 @@ A clue is one word and a number, said out loud (the app does not take it and doe
 to the number plus one). Own agent: keep guessing. Bystander or the other team's agent: the turn ends. Either phone
 can pass the turn.
 Assassin: the team that picked it loses. First team to uncover all its agents wins.
-The rules are also inside the app (the **?** button).
+The rules of both versions are also inside the app (the **?** button; tabs switch between Classic and Duet).
 
 ## Build
 
@@ -55,6 +70,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 |---|---|
 | `app/src/main/java/com/zepinto/codenames/Game.kt` | Cards, teams, the rules engine, word picking (plain Kotlin, unit tested) |
 | `.../Protocol.kt`, `Session.kt` | Messages between the phones, host and table sessions, which sound to play |
+| `.../Duet.kt`, `DuetScreens.kt` | Duet: layout of the two keys, rules engine, per-player view, host and guest sessions, screens |
 | `.../Link.kt`, `LanLink.kt`, `NearbyLink.kt` | The two transports behind one interface |
 | `.../AppViewModel.kt` | Wires game, sessions and links together; reconnection |
 | `.../Screens.kt`, `Theme.kt`, `Strings.kt`, `Sfx.kt` | UI, look, texts (three languages, rules page), synthesised sounds |
@@ -68,8 +84,8 @@ spymaster emulator (`adb -s emulator-5554 forward tcp:18765 tcp:8765`) and conne
 
 ## Known limits
 
-- The **Nearby** link has not been verified on real hardware yet (see Status above). On Android 12 and older the
-  phone's location switch may have to be on for Nearby to find the other phone.
+- Nearby was confirmed on one pair of real phones only. On Android 12 and older the phone's location switch
+  may have to be on for Nearby to find the other phone.
 - There is no foreground service: keep the app open on both phones (the screen stays on by itself while it is).
 - The Wi-Fi link is not encrypted; it is meant for a game among friends on a network you trust.
 

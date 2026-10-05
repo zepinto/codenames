@@ -31,6 +31,8 @@ object Palette {
     val Aqua = Color(0xFF5CE1E6)
     val Mint = Color(0xFF6EE7B7)
     val Lilac = Color(0xFFB69CFF)
+    val Agent = Color(0xFF2E9E5B)
+    val AgentDeep = Color(0xFF1B6B3E)
 
     fun team(team: Team) = if (team == Team.RED) Red else Blue
     fun card(type: CardType) = when (type) {
